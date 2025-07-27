@@ -26,7 +26,17 @@ func NewCamera() *Camera {
 	}
 }
 
-func (c *Camera) ExposesEndpoint() bool {
+func (c *Camera) Start() error {
+	go func() {
+		// Start a 60-second video capture that streams frames
+		if err := c.StartVideoCapture("", 60*60*time.Second); err != nil { // 1 hour duration
+			fmt.Printf("❌ Failed to start camera capture: %v\n", err)
+		}
+	}()
+	return nil
+}
+
+func (c *Camera) ExposesReceivingEndpoint() bool {
 	return false
 }
 

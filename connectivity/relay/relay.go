@@ -29,14 +29,23 @@ func NewWebRTCRelay(receiver Receiver, sender Sender) *WebRTCRelay {
 }
 
 func (s *WebRTCRelay) Setup() {
-	if s.receiver.ExposesEndpoint() {
+	if s.receiver.ExposesReceivingEndpoint() {
 		http.HandleFunc("/ws/receiver", s.HandleReceiverSignaling)
 	}
-	if s.sender.ExposesEndpoint() {
+	if s.sender.ExposesReceivingEndpoint() {
 		http.HandleFunc("/ws/sender", s.HandleSenderSignaling)
 	}
 
 	http.HandleFunc("/api/status", s.HandleStatus)
+}
+
+func (s *WebRTCRelay) Start() error {
+	err := s.receiver.Start()
+	if err != nil {
+		return err
+	}
+	err = s.sender.Start()
+	return err
 }
 
 // HandleReceiverSignaling handles WebSocket connections for the input stream

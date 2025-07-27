@@ -4,9 +4,10 @@ import "net/http"
 
 type Socket interface {
 	IsConnected() bool
+	Start() error
 	Close() error
 	HandleWebSocketConnection(w http.ResponseWriter, req *http.Request)
-	ExposesEndpoint() bool
+	ExposesReceivingEndpoint() bool
 }
 
 type Receiver interface {

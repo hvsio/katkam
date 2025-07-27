@@ -31,7 +31,11 @@ func NewWebRTCReceiver() *WebRTCReceiver {
 	}
 }
 
-func (r *WebRTCReceiver) ExposesEndpoint() bool {
+func (r *WebRTCReceiver) Start() error {
+	return nil
+}
+
+func (r *WebRTCReceiver) ExposesReceivingEndpoint() bool {
 	return true
 }
 

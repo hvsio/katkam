@@ -25,14 +25,14 @@ if [ $? -ne 0 ]; then
 fi
 
 # Build the UI server
-echo "🔨 Building UI server..."
-cd test_ui
-go build -o ui-server server.go
-if [ $? -ne 0 ]; then
-    echo "❌ UI server build failed"
-    exit 1
-fi
-cd ..
+#echo "🔨 Building UI server..."
+#cd test_ui
+#go build -o ui-server server.go
+#if [ $? -ne 0 ]; then
+#    echo "❌ UI server build failed"
+#    exit 1
+#fi
+# cd ..
 
 echo ""
 echo "🎬 Starting backend camera server (port 8080)..."
@@ -42,11 +42,11 @@ BACKEND_PID=$!
 # Give backend time to start
 sleep 2
 
-echo "🖥️  Starting UI server (port 8081)..."
-cd test_ui
-./ui-server &
-UI_PID=$!
-cd ..
+#echo "🖥️  Starting UI server (port 8081)..."
+#cd test_ui
+#./ui-server &
+#UI_PID=$!
+#cd ..
 
 # Give UI server time to start
 sleep 1

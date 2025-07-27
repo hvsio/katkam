@@ -7,23 +7,27 @@ import (
 	"katkam/connectivity/senders"
 	"log"
 	"net/http"
-	"time"
+	"os"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
-	camera := receivers.NewCamera()
+	err := godotenv.Load()
+	if err != nil {
+		panic(err)
+	}
+
+	var receiver relay.Receiver
+	use_direct_camera := os.Getenv("USE_DIRECT_CAMERA")
+	if use_direct_camera == "true" {
+		receiver = receivers.NewCamera()
+	} else {
+		receiver = receivers.NewWebRTCReceiver()
+	}
 	sender := senders.NewWebRTCSender()
 
-	relay := relay.NewWebRTCRelay(camera, sender)
-
-	// Start camera streaming (this will start sending frames to the callbacks)
-	go func() {
-		// Start a 60-second video capture that streams frames
-		if err := camera.StartVideoCapture("", 60*60*time.Second); err != nil { // 1 hour duration
-			fmt.Printf("❌ Failed to start camera capture: %v\n", err)
-		}
-	}()
-
+	relay := relay.NewWebRTCRelay(receiver, sender)
 	relay.Setup()
 
 	// Start HTTP server

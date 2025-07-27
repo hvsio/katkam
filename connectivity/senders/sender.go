@@ -38,7 +38,11 @@ func NewWebRTCSender() *WebRTCSender {
 	}
 }
 
-func (r *WebRTCSender) ExposesEndpoint() bool {
+func (r *WebRTCSender) Start() error {
+	return r.InitializePeerConnection()
+}
+
+func (r *WebRTCSender) ExposesReceivingEndpoint() bool {
 	return true
 }
 

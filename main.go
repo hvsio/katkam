@@ -25,13 +25,13 @@ func main() {
 	} else {
 		receiver = receivers.NewWebRTCReceiver()
 	}
-	sender := senders.NewWebRTCSender()
 
+	sender := senders.NewWebRTCSender()
 	relay := relay.NewWebRTCRelay(receiver, sender)
-	relay.Setup()
+	relay.Start(http.ResponseWriter(nil), nil)
 
 	// Start HTTP server
-	port := ":8080"
+	port := os.Getenv("PORT")
 	fmt.Printf("Starting camera streaming server on port %s\n", port)
 	fmt.Printf("Access camera stream at: http://localhost%s\n", port)
 	fmt.Printf("Camera control: http://localhost%s/api/camera/status\n", port)

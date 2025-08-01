@@ -36,10 +36,6 @@ func (c *Camera) Start() error {
 	return nil
 }
 
-func (c *Camera) ExposesReceivingEndpoint() bool {
-	return false
-}
-
 func (r *Camera) AssignVideoFrameCallback(fn func([]byte)) {
 	r.OnVideoFrame = fn
 }

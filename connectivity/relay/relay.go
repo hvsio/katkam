@@ -1,7 +1,6 @@
 package relay
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sync"
@@ -28,24 +27,15 @@ func NewWebRTCRelay(receiver Receiver, sender Sender) *WebRTCRelay {
 	return relay
 }
 
-func (s *WebRTCRelay) Setup() {
-	if s.receiver.ExposesReceivingEndpoint() {
-		http.HandleFunc("/ws/receiver", s.HandleReceiverSignaling)
-	}
-	if s.sender.ExposesReceivingEndpoint() {
-		http.HandleFunc("/ws/sender", s.HandleSenderSignaling)
-	}
-
-	http.HandleFunc("/api/status", s.HandleStatus)
-}
-
-func (s *WebRTCRelay) Start() error {
+func (s *WebRTCRelay) Start(w http.ResponseWriter, r *http.Request) {
 	err := s.receiver.Start()
 	if err != nil {
-		return err
+		panic(err)
 	}
 	err = s.sender.Start()
-	return err
+	if err != nil {
+		panic(err)
+	}
 }
 
 // HandleReceiverSignaling handles WebSocket connections for the input stream
@@ -58,23 +48,6 @@ func (s *WebRTCRelay) HandleSenderSignaling(w http.ResponseWriter, r *http.Reque
 	s.GetSender().HandleWebSocketConnection(w, r)
 }
 
-// HandleStatus returns the current status of the relay
-func (s *WebRTCRelay) HandleStatus(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
-		return
-	}
-
-	status := s.GetStatus()
-	json.NewEncoder(w).Encode(status)
-}
-
-// GetRelay returns the underlying relay instance
 func (r *WebRTCRelay) relayVideoFrame(data []byte) {
 	if r.sender.IsConnected() {
 		r.sender.SendVideoFrame(data)

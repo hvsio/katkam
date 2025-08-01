@@ -35,10 +35,6 @@ func (r *WebRTCReceiver) Start() error {
 	return nil
 }
 
-func (r *WebRTCReceiver) ExposesReceivingEndpoint() bool {
-	return true
-}
-
 func (r *WebRTCReceiver) AssignVideoFrameCallback(fn func([]byte)) {
 	r.OnVideoFrame = fn
 }

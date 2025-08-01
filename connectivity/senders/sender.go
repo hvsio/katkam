@@ -42,10 +42,6 @@ func (r *WebRTCSender) Start() error {
 	return r.InitializePeerConnection()
 }
 
-func (r *WebRTCSender) ExposesReceivingEndpoint() bool {
-	return true
-}
-
 func (s *WebRTCSender) InitializePeerConnection() error {
 	fmt.Println("Initializing sender...")
 	config := ext_webrtc.Configuration{

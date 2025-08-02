@@ -1,7 +1,7 @@
 package websocket
 
 import (
-	"katkam/connectivity/relay"
+	"katkam/features/connectivity/relay"
 	"net/http"
 )
 

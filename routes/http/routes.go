@@ -1,15 +1,15 @@
 package http
 
 import (
-	"katkam/controllers"
+	"katkam/handlers"
 	"net/http"
 )
 
 type HttpRouter struct {
-	authController *controllers.AuthController
+	authController *handlers.AuthController
 }
 
-func NewHttpRouter(authController *controllers.AuthController) *HttpRouter {
+func NewHttpRouter(authController *handlers.AuthController) *HttpRouter {
 	return &HttpRouter{
 		authController: authController,
 	}

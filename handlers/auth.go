@@ -1,24 +1,20 @@
-package controllers
+package handlers
 
 import (
 	"encoding/json"
+	"katkam/config"
 	"net/http"
 
 	"katkam/features/auth"
 )
 
-type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
 type AuthController struct {
 	authorizer *auth.Authorizer
 }
 
-func NewAuthController(db any) *AuthController {
+func NewAuthController(config config.AuthConfig, db any) *AuthController {
 	return &AuthController{
-		authorizer: auth.NewAuthorizer(db),
+		authorizer: auth.NewAuthorizer(config, db),
 	}
 }
 

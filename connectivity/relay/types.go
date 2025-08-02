@@ -7,7 +7,6 @@ type Socket interface {
 	Start() error
 	Close() error
 	HandleWebSocketConnection(w http.ResponseWriter, req *http.Request)
-	ExposesReceivingEndpoint() bool
 }
 
 type Receiver interface {

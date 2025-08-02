@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
+	"katkam/config"
 	"net/http"
 	"time"
 
@@ -10,18 +10,13 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type JwtToken string
-
-var (
-	ErrorInvalidCredentials = errors.New("Invalid credentials")
-)
-
 type Authorizer struct {
-	db any
+	config config.AuthConfig
+	db     any
 }
 
-func NewAuthorizer(db any) *Authorizer {
-	return &Authorizer{db: db}
+func NewAuthorizer(config config.AuthConfig, db any) *Authorizer {
+	return &Authorizer{config: config, db: db}
 }
 
 func (a *Authorizer) AuthorizeUser(username, password string) (bool, error) {
@@ -55,10 +50,10 @@ func (a *Authorizer) verifyPassword(hashedPassword, password string) error {
 }
 
 func (a *Authorizer) generateJwt() (JwtToken, error) {
-	sampleSecretKey := ""
+	sampleSecretKey := a.config.SecretKey
 	token := jwt.New(jwt.SigningMethodEdDSA)
 	claims := token.Claims.(jwt.MapClaims)
-	claims["exp"] = time.Now().Add(10 * time.Minute) //TODO: timeout
+	claims["exp"] = time.Now().Add(time.Duration(a.config.Timeout) * time.Second)
 	claims["authorized"] = true
 	claims["user"] = "username"
 

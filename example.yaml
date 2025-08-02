@@ -1,0 +1,9 @@
+# Server configurations
+server:
+  host: ""
+  port: 8080
+
+# Auth configurations
+auth:
+  secret_key: ""
+  username: ""

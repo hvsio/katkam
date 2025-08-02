@@ -24,18 +24,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Build the UI server
-#echo "🔨 Building UI server..."
-#cd test_ui
-#go build -o ui-server server.go
-#if [ $? -ne 0 ]; then
-#    echo "❌ UI server build failed"
-#    exit 1
-#fi
-# cd ..
-
-echo ""
-echo "🎬 Starting backend camera server (port 8080)..."
+echo "🎬 Starting backend server (port 8080)..."
 ./katkam &
 BACKEND_PID=$!
 

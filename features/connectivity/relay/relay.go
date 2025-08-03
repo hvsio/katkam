@@ -27,7 +27,7 @@ func NewWebRTCRelay(receiver Receiver, sender Sender) *WebRTCRelay {
 	return relay
 }
 
-func (s *WebRTCRelay) Start(w http.ResponseWriter, r *http.Request) {
+func (s *WebRTCRelay) Start() {
 	err := s.receiver.Start()
 	if err != nil {
 		panic(err)

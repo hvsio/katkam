@@ -62,7 +62,7 @@ func (c *Camera) StartVideoCapture(filename string, duration time.Duration) erro
 	}
 
 	// Create context for cancellation
-	ctx, cancel := context.WithTimeout(context.Background(), duration+5*time.Second)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Use ffmpeg to capture video and output IVF format for VP8 frames

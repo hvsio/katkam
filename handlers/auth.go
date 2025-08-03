@@ -18,6 +18,43 @@ func NewAuthController(config config.AuthConfig, db any) *AuthController {
 	}
 }
 
+func (ac *AuthController) ValidateToken(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if r.Method != "POST" {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Method not allowed"})
+		return
+	}
+
+	if token := r.Header["Authorization"]; token != nil {
+		ok, err := ac.authorizer.VerifyJWT(token[0])
+
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]bool{"tokenValid": false})
+			return
+		}
+
+		if !ok {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]bool{"tokenValid": false})
+			return
+		}
+
+		json.NewEncoder(w).Encode(map[string]bool{"tokenValid": true})
+	} else {
+		json.NewEncoder(w).Encode(map[string]bool{"tokenValid": false})
+	}
+}
+
 func (ac *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 	var loginReq LoginRequest
 	w.Header().Set("Content-Type", "application/json")
@@ -55,7 +92,7 @@ func (ac *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jwt, err := ac.authorizer.GetJwtToken(loginReq.Username, loginReq.Password)
+	jwt, err := ac.authorizer.GetJwtToken(loginReq.Username)
 
 	// Set JWT token as HTTP-only cookie
 	cookie := &http.Cookie{
@@ -129,10 +166,4 @@ func (ac *AuthController) ProtectedEndpoint(w http.ResponseWriter, r *http.Reque
 		"data":    "This is protected content",
 	}
 	json.NewEncoder(w).Encode(response)
-}
-
-func (ac *AuthController) SetupRoutes() {
-	http.HandleFunc("/auth/login", ac.Login)
-	http.HandleFunc("/auth/logout", ac.Logout)
-	http.HandleFunc("/auth/protected", ac.ProtectedEndpoint)
 }

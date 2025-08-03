@@ -26,13 +26,6 @@ func main() {
 		panic(err)
 	}
 
-	authController := handlers.NewAuthController(config.AuthConfig, nil)
-	httpRouter := internal_http.NewHttpRouter(authController)
-	websocketRouter := websocket.NewWebSocketRouter(nil)
-
-	httpRouter.SetupRoutes()
-	websocketRouter.SetupRoutes()
-
 	var receiver relay.Receiver
 	if config.Server.UseDirectCamera {
 		receiver = receivers.NewCamera()
@@ -42,7 +35,14 @@ func main() {
 
 	sender := senders.NewWebRTCSender()
 	relay := relay.NewWebRTCRelay(receiver, sender)
-	relay.Start(http.ResponseWriter(nil), nil)
+	relay.Start()
+
+	authController := handlers.NewAuthController(config.AuthConfig, nil)
+	httpRouter := internal_http.NewHttpRouter(authController)
+	websocketRouter := websocket.NewWebSocketRouter(relay)
+
+	httpRouter.SetupRoutes()
+	websocketRouter.SetupRoutes()
 
 	// Start HTTP server
 	port := fmt.Sprintf(":%d", config.Server.Port)

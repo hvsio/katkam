@@ -18,4 +18,5 @@ func NewHttpRouter(authController *handlers.AuthController) *HttpRouter {
 func (h *HttpRouter) SetupRoutes() {
 	http.HandleFunc("/auth/login", h.authController.Login)
 	http.HandleFunc("/auth/logout", h.authController.Logout)
+	http.HandleFunc("/auth/validate", h.authController.ValidateToken)
 }

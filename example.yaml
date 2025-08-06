@@ -6,4 +6,9 @@ server:
 # Auth configurations
 auth:
   secret_key: ""
-  username: ""
+  super_username: ""
+  super_password: ""
+  expiration_time: 43200 
+  users:
+    - username: ""
+      hashed_password: ""

@@ -2,13 +2,16 @@ package main
 
 import (
 	"fmt"
-	"katkam/config"
-	"katkam/features/connectivity/receivers"
-	"katkam/features/connectivity/relay"
-	"katkam/features/connectivity/senders"
-	"katkam/handlers"
-	internal_http "katkam/routes/http"
-	"katkam/routes/websocket"
+	"katkam/internal/auth"
+	"katkam/internal/config"
+	"katkam/internal/handlers"
+	"katkam/internal/infrastructure/connectivity"
+	"katkam/internal/infrastructure/connectivity/receivers"
+	"katkam/internal/infrastructure/connectivity/relay"
+	"katkam/internal/infrastructure/connectivity/senders"
+	repo "katkam/internal/infrastructure/repository"
+	internal_http "katkam/internal/infrastructure/routes/http"
+	internal_websocket "katkam/internal/infrastructure/routes/websocket"
 	"log"
 	"net/http"
 
@@ -26,21 +29,29 @@ func main() {
 		panic(err)
 	}
 
-	var receiver relay.Receiver
+	// infrastructure
+	userRepo := repo.NewUserRepository(config.Users)
+
+	var receiver connectivity.Receiver
 	if config.Server.UseDirectCamera {
 		receiver = receivers.NewCamera()
 	} else {
 		receiver = receivers.NewWebRTCReceiver()
 	}
-
 	sender := senders.NewWebRTCSender()
 	relay := relay.NewWebRTCRelay(receiver, sender)
-	relay.Start()
+	// relay.Start()
 
-	authController := handlers.NewAuthController(config.AuthConfig, nil)
-	httpRouter := internal_http.NewHttpRouter(authController)
-	websocketRouter := websocket.NewWebSocketRouter(relay)
+	// features
+	authorizer := auth.NewAuthorizer(config.Auth, userRepo)
 
+	// handlers
+	authHandler := handlers.NewAuthHandler(authorizer)
+	relayHandler := handlers.NewRelayHandler(relay)
+
+	// routes
+	httpRouter := internal_http.NewHttpRouter(authHandler, relayHandler)
+	websocketRouter := internal_websocket.NewWebSocketRouter(relayHandler)
 	httpRouter.SetupRoutes()
 	websocketRouter.SetupRoutes()
 

@@ -3,29 +3,25 @@ package connectivity
 import "net/http"
 
 type VideoStreamer struct {
-	OnVideoFrame   func([]byte)
-	OnAudioFrame   func([]byte)
-	OnConnected    func()
-	OnDisconnected func()
+	ReceiverVideoChannel chan []byte
+	ReceiverAudioChannel chan []byte
 }
 
-type Socket interface {
-	IsConnected() bool
+type WebSocket interface {
 	Start() error
 	Close() error
-	HandleWebSocketConnection(w http.ResponseWriter, req *http.Request)
+	IsConnected() bool
+	StartWebSocketConnection(w http.ResponseWriter, req *http.Request)
 }
 
 type Receiver interface {
-	Socket
-	AssignDisconnectedCallback(func())
-	AssignConnectedCallback(func())
-	AssignAudioFrameCallback(func(d []byte))
-	AssignVideoFrameCallback(func(data []byte))
+	WebSocket
+	GetReceiverVideoChannel() chan []byte
+	GetReceiverAudioChannel() chan []byte
 }
 
 type Sender interface {
-	Socket
+	WebSocket
 	SendVideoFrame(data []byte)
 	SendAudioFrame(data []byte)
 }

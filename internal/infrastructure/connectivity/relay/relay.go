@@ -20,56 +20,46 @@ func NewWebRTCRelay(receiver connectivity.Receiver, sender connectivity.Sender) 
 		sender:   sender,
 	}
 
-	relay.receiver.AssignVideoFrameCallback(relay.relayVideoFrame)
-	relay.receiver.AssignAudioFrameCallback(relay.relayAudioFrame)
-	relay.receiver.AssignConnectedCallback(relay.onReceiverConnected)
-	relay.receiver.AssignDisconnectedCallback(relay.onReceiverDisconnected)
-
 	return relay
 }
 
-func (s *WebRTCRelay) Start() {
-	err := s.receiver.Start()
+// Starts the receiver and sender components
+// Also begins to listen for video and audio frames from the receiver channels and sends them to the sender
+func (r *WebRTCRelay) Start() {
+	err := r.receiver.Start()
 	if err != nil {
 		panic(err)
 	}
-	err = s.sender.Start()
+	err = r.sender.Start()
 	if err != nil {
 		panic(err)
 	}
+
+	videoChannel := r.receiver.GetReceiverVideoChannel()
+	go func() {
+		for videoFrame := range videoChannel {
+			if r.sender.IsConnected() {
+				r.sender.SendVideoFrame(videoFrame)
+			}
+		}
+	}()
+
+	audioChannel := r.receiver.GetReceiverAudioChannel()
+	go func() {
+		for audioFrame := range audioChannel {
+			if r.sender.IsConnected() {
+				r.sender.SendAudioFrame(audioFrame)
+			}
+		}
+	}()
+
 }
 
-func (r *WebRTCRelay) relayVideoFrame(data []byte) {
-	if r.sender.IsConnected() {
-		r.sender.SendVideoFrame(data)
-	}
-}
-
-func (r *WebRTCRelay) relayAudioFrame(data []byte) {
-	if r.sender.IsConnected() {
-		r.sender.SendAudioFrame(data)
-	}
-}
-
-func (r *WebRTCRelay) onReceiverConnected() {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	r.isActive = true
-	fmt.Println("WebRTC Relay: Receiver connected, relay is now active")
-}
-
-func (r *WebRTCRelay) onReceiverDisconnected() {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	r.isActive = false
-	fmt.Println("WebRTC Relay: Receiver disconnected, relay is now inactive")
-}
-
-func (r *WebRTCRelay) GetReceiver() connectivity.Socket {
+func (r *WebRTCRelay) GetReceiver() connectivity.WebSocket {
 	return r.receiver
 }
 
-func (r *WebRTCRelay) GetSender() connectivity.Socket {
+func (r *WebRTCRelay) GetSender() connectivity.WebSocket {
 	return r.sender
 }
 
@@ -77,17 +67,6 @@ func (r *WebRTCRelay) IsActive() bool {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 	return r.isActive
-}
-
-func (r *WebRTCRelay) GetStatus() map[string]interface{} {
-	r.mutex.RLock()
-	defer r.mutex.RUnlock()
-
-	return map[string]interface{}{
-		"relay_active":       r.isActive,
-		"receiver_connected": r.receiver.IsConnected(),
-		"sender_connected":   r.sender.IsConnected(),
-	}
 }
 
 func (r *WebRTCRelay) Close() error {

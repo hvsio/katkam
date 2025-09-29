@@ -18,56 +18,50 @@ type Camera struct {
 	Device      string
 	StreamCmd   *exec.Cmd
 	StreamMutex sync.Mutex
-	IsStreaming bool
+	isStreaming bool
 }
 
 func NewCamera() *Camera {
 	return &Camera{
 		Device: "0", // Default camera input for AVFoundation on macOS
+		VideoStreamer: connectivity.VideoStreamer{
+			ReceiverVideoChannel: make(chan []byte),
+			ReceiverAudioChannel: make(chan []byte),
+		},
 	}
+}
+
+func (c *Camera) GetReceiverAudioChannel() chan []byte {
+	return c.ReceiverAudioChannel
+}
+
+func (c *Camera) GetReceiverVideoChannel() chan []byte {
+	return c.ReceiverVideoChannel
 }
 
 func (c *Camera) Start() error {
 	go func() {
 		// Start a 60-second video capture that streams frames
-		if err := c.StartVideoCapture("", 60*60*time.Second); err != nil { // 1 hour duration
+		if err := c.StartVideoCapture(60 * 60 * time.Second); err != nil { // 1 hour duration
 			fmt.Printf("❌ Failed to start camera capture: %v\n", err)
 		}
 	}()
 	return nil
 }
 
-func (r *Camera) AssignVideoFrameCallback(fn func([]byte)) {
-	r.OnVideoFrame = fn
-}
-
-func (r *Camera) AssignAudioFrameCallback(fn func([]byte)) {
-	r.OnAudioFrame = fn
-}
-
-func (r *Camera) AssignConnectedCallback(fn func()) {
-	r.OnConnected = fn
-}
-
-func (r *Camera) AssignDisconnectedCallback(fn func()) {
-	r.OnDisconnected = fn
-}
-
-func (c *Camera) StartVideoCapture(filename string, duration time.Duration) error {
+func (c *Camera) StartVideoCapture(duration time.Duration) error {
 	fmt.Printf("🎬 Starting video capture for %.0f seconds...\n", duration.Seconds())
 	c.StreamMutex.Lock()
 	defer c.StreamMutex.Unlock()
 
-	if c.IsStreaming {
+	if c.isStreaming {
 		return fmt.Errorf("camera is already streaming")
 	}
 
-	// Create context for cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Use ffmpeg to capture video and output IVF format for VP8 frames
-	// Note: macOS requires camera permission for Terminal/process
 	cmd := exec.CommandContext(ctx, "ffmpeg",
 		"-f", "avfoundation",
 		"-video_size", "640x480", // Resolution supported by camera
@@ -81,26 +75,22 @@ func (c *Camera) StartVideoCapture(filename string, duration time.Duration) erro
 		"-", // Output to stdout for streaming
 	)
 
-	// Set up pipes for streaming
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stdout pipe: %v", err)
 	}
 
-	// Also capture stderr for debugging
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("failed to create stderr pipe: %v", err)
 	}
 
-	// Start the command
 	fmt.Printf("📹 Starting FFmpeg command: %s\n", cmd.String())
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start ffmpeg: %v", err)
 	}
 	fmt.Println("✅ FFmpeg started successfully")
 
-	// Log stderr in background
 	go func() {
 		buffer := make([]byte, 1024)
 		for {
@@ -109,13 +99,13 @@ func (c *Camera) StartVideoCapture(filename string, duration time.Duration) erro
 				break
 			}
 			if n > 0 {
-				fmt.Printf("FFmpeg stderr: %s", string(buffer[:n]))
+				//fmt.Printf("FFmpeg stderr: %s", string(buffer[:n]))
 			}
 		}
 	}()
 
 	c.StreamCmd = cmd
-	c.IsStreaming = true
+	c.isStreaming = true
 
 	// Stream frames to callback in fire-and-forget manner
 	go c.captureFramesToCallback(stdout, ctx)
@@ -124,7 +114,7 @@ func (c *Camera) StartVideoCapture(filename string, duration time.Duration) erro
 	err = cmd.Wait()
 
 	c.StreamMutex.Lock()
-	c.IsStreaming = false
+	c.isStreaming = false
 	c.StreamMutex.Unlock()
 
 	return err
@@ -170,18 +160,16 @@ func (c *Camera) captureFramesToCallback(reader io.Reader, ctx context.Context) 
 			}
 
 			// Send the VP8 frame to WebRTC
-			if c.OnVideoFrame != nil {
-				c.OnVideoFrame(frameData)
-			}
+			c.ReceiverVideoChannel <- frameData
 		}
 	}
 }
 
-func (c *Camera) StopVideoCapture() error {
+func (c *Camera) Close() error {
 	c.StreamMutex.Lock()
 	defer c.StreamMutex.Unlock()
 
-	if !c.IsStreaming {
+	if !c.isStreaming {
 		return fmt.Errorf("camera is not currently streaming")
 	}
 
@@ -191,21 +179,14 @@ func (c *Camera) StopVideoCapture() error {
 		}
 	}
 
-	c.IsStreaming = false
+	c.isStreaming = false
 	return nil
 }
 
-func (c *Camera) Close() error {
-	if c.IsStreaming {
-		return c.StopVideoCapture()
-	}
-	return nil
-}
-
-func (c *Camera) HandleWebSocketConnection(w http.ResponseWriter, req *http.Request) {
+func (c *Camera) StartWebSocketConnection(w http.ResponseWriter, req *http.Request) {
 	panic("Camera is directly connected, it should not handle websocket connection. Make sure you configured the receiver correctly.")
 }
 
 func (c *Camera) IsConnected() bool {
-	return c.IsStreaming
+	return c.isStreaming
 }

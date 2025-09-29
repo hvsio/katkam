@@ -11,3 +11,6 @@ brew install ffmpeg
 - setup auth
 - setup deployment
 - setup github actions
+
+- develop local script that sends to this backend
+- refactor both receivers

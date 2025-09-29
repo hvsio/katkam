@@ -14,16 +14,9 @@ import (
 	internal_websocket "katkam/internal/infrastructure/routes/websocket"
 	"log"
 	"net/http"
-
-	"github.com/joho/godotenv"
 )
 
 func main() {
-	err := godotenv.Load()
-	if err != nil {
-		panic(err)
-	}
-
 	config, err := config.LoadConfig()
 	if err != nil {
 		panic(err)

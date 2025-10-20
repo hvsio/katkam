@@ -5,13 +5,13 @@ import (
 	"katkam/internal/auth"
 	"katkam/internal/config"
 	"katkam/internal/handlers"
-	"katkam/internal/infrastructure/connectivity"
-	"katkam/internal/infrastructure/connectivity/receivers"
-	"katkam/internal/infrastructure/connectivity/relay"
-	"katkam/internal/infrastructure/connectivity/senders"
 	repo "katkam/internal/infrastructure/repository"
 	internal_http "katkam/internal/infrastructure/routes/http"
 	internal_websocket "katkam/internal/infrastructure/routes/websocket"
+	"katkam/internal/infrastructure/websockets"
+	"katkam/internal/infrastructure/websockets/receivers"
+	"katkam/internal/infrastructure/websockets/relay"
+	"katkam/internal/infrastructure/websockets/senders"
 	"log"
 	"net/http"
 )
@@ -25,7 +25,7 @@ func main() {
 	// infrastructure
 	userRepo := repo.NewUserRepository(config.Users)
 
-	var receiver connectivity.Receiver
+	var receiver websockets.Receiver
 	if config.Server.UseDirectCamera {
 		receiver = receivers.NewCamera()
 	} else {

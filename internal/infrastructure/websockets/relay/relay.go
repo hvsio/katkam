@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"katkam/internal/infrastructure/connectivity"
+	connectivity "katkam/internal/infrastructure/websockets"
 )
 
 type WebRTCRelay struct {

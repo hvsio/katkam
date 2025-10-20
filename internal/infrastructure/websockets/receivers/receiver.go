@@ -3,7 +3,7 @@ package receivers
 import (
 	"fmt"
 	"io"
-	"katkam/internal/infrastructure/connectivity"
+	"katkam/internal/infrastructure/websockets"
 	"net/http"
 	"sync"
 
@@ -12,7 +12,7 @@ import (
 )
 
 type WebRTCReceiver struct {
-	connectivity.VideoStreamer
+	websockets.VideoStreamer
 
 	upgrader       websocket.Upgrader
 	peerConnection *ext_webrtc.PeerConnection

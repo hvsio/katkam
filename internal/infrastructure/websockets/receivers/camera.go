@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"katkam/internal/infrastructure/connectivity"
+	"katkam/internal/infrastructure/websockets"
 	"net/http"
 	"os/exec"
 	"sync"
@@ -13,7 +13,7 @@ import (
 )
 
 type Camera struct {
-	connectivity.VideoStreamer
+	websockets.VideoStreamer
 
 	Device      string
 	StreamCmd   *exec.Cmd
@@ -24,7 +24,7 @@ type Camera struct {
 func NewCamera() *Camera {
 	return &Camera{
 		Device: "0", // Default camera input for AVFoundation on macOS
-		VideoStreamer: connectivity.VideoStreamer{
+		VideoStreamer: websockets.VideoStreamer{
 			ReceiverVideoChannel: make(chan []byte),
 			ReceiverAudioChannel: make(chan []byte),
 		},

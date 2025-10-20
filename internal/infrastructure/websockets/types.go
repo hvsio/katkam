@@ -1,4 +1,4 @@
-package connectivity
+package websockets
 
 import "net/http"
 

@@ -33,7 +33,6 @@ func main() {
 	}
 	sender := senders.NewWebRTCSender()
 	relay := relay.NewWebRTCRelay(receiver, sender)
-	// relay.Start()
 
 	// features
 	authorizer := auth.NewAuthorizer(config.Auth, userRepo)

@@ -11,7 +11,7 @@ type WebSocket interface {
 	Start() error
 	Close() error
 	IsConnected() bool
-	StartWebSocketConnection(w http.ResponseWriter, req *http.Request)
+	HandleWebSocketConnection(w http.ResponseWriter, req *http.Request)
 }
 
 type Receiver interface {

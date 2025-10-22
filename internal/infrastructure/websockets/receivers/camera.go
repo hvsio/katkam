@@ -50,7 +50,6 @@ func (c *Camera) Start() error {
 }
 
 func (c *Camera) StartVideoCapture(duration time.Duration) error {
-	fmt.Printf("🎬 Starting video capture for %.0f seconds...\n", duration.Seconds())
 	c.StreamMutex.Lock()
 	defer c.StreamMutex.Unlock()
 
@@ -80,30 +79,10 @@ func (c *Camera) StartVideoCapture(duration time.Duration) error {
 		return fmt.Errorf("failed to create stdout pipe: %v", err)
 	}
 
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("failed to create stderr pipe: %v", err)
-	}
-
 	fmt.Printf("📹 Starting FFmpeg command: %s\n", cmd.String())
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start ffmpeg: %v", err)
 	}
-	fmt.Println("✅ FFmpeg started successfully")
-
-	go func() {
-		buffer := make([]byte, 1024)
-		for {
-			n, err := stderr.Read(buffer)
-			if err != nil {
-				break
-			}
-			if n > 0 {
-				//fmt.Printf("FFmpeg stderr: %s", string(buffer[:n]))
-			}
-		}
-	}()
-
 	c.StreamCmd = cmd
 	c.isStreaming = true
 
@@ -112,10 +91,6 @@ func (c *Camera) StartVideoCapture(duration time.Duration) error {
 
 	// Wait for command to complete
 	err = cmd.Wait()
-
-	c.StreamMutex.Lock()
-	c.isStreaming = false
-	c.StreamMutex.Unlock()
 
 	return err
 }
@@ -166,9 +141,6 @@ func (c *Camera) captureFramesToCallback(reader io.Reader, ctx context.Context) 
 }
 
 func (c *Camera) Close() error {
-	c.StreamMutex.Lock()
-	defer c.StreamMutex.Unlock()
-
 	if !c.isStreaming {
 		return fmt.Errorf("camera is not currently streaming")
 	}
@@ -183,7 +155,7 @@ func (c *Camera) Close() error {
 	return nil
 }
 
-func (c *Camera) StartWebSocketConnection(w http.ResponseWriter, req *http.Request) {
+func (c *Camera) HandleWebSocketConnection(w http.ResponseWriter, req *http.Request) {
 	panic("Camera is directly connected, it should not handle websocket connection. Make sure you configured the receiver correctly.")
 }
 

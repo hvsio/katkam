@@ -26,6 +26,7 @@ func NewWebRTCRelay(receiver connectivity.Receiver, sender connectivity.Sender) 
 // Starts the receiver and sender components
 // Also begins to listen for video and audio frames from the receiver channels and sends them to the sender
 func (r *WebRTCRelay) Start() {
+	fmt.Print("STARTING RELAY\n")
 	err := r.receiver.Start()
 	if err != nil {
 		panic(err)
@@ -40,6 +41,8 @@ func (r *WebRTCRelay) Start() {
 		for videoFrame := range videoChannel {
 			if r.sender.IsConnected() {
 				r.sender.SendVideoFrame(videoFrame)
+			} else {
+				return
 			}
 		}
 	}()
@@ -49,6 +52,8 @@ func (r *WebRTCRelay) Start() {
 		for audioFrame := range audioChannel {
 			if r.sender.IsConnected() {
 				r.sender.SendAudioFrame(audioFrame)
+			} else {
+				return
 			}
 		}
 	}()

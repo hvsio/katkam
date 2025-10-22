@@ -19,6 +19,7 @@ func NewHttpRouter(authHandler *handlers.AuthHandler, relayHandler *handlers.Rel
 
 func (h *HttpRouter) SetupRoutes() {
 	http.HandleFunc("/relay/start", h.relayHandler.Start)
+	http.HandleFunc("/relay/stop", h.relayHandler.Stop)
 
 	http.HandleFunc("/auth/login", h.authHandler.Login)
 	http.HandleFunc("/auth/logout", h.authHandler.Logout)

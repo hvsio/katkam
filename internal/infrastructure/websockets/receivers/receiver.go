@@ -64,7 +64,6 @@ func (r *WebRTCReceiver) InitializePeerConnection() error {
 
 	// Handle incoming tracks
 	pc.OnTrack(func(track *ext_webrtc.TrackRemote, receiver *ext_webrtc.RTPReceiver) {
-		fmt.Printf("Received track: %s, codec: %s\n", track.Kind().String(), track.Codec().MimeType)
 		if track.Kind() == ext_webrtc.RTPCodecTypeVideo {
 			r.mutex.Lock()
 			r.videoTrack = track
@@ -80,7 +79,6 @@ func (r *WebRTCReceiver) InitializePeerConnection() error {
 
 	// Handle connection state changes
 	pc.OnConnectionStateChange(func(state ext_webrtc.PeerConnectionState) {
-		fmt.Printf("Receiver connection state: %s\n", state.String())
 		r.mutex.Lock()
 		defer r.mutex.Unlock()
 
@@ -140,7 +138,7 @@ func (r *WebRTCReceiver) handleAudioTrack(track *ext_webrtc.TrackRemote) {
 	}
 }
 
-func (r *WebRTCReceiver) StartWebSocketConnection(w http.ResponseWriter, req *http.Request) {
+func (r *WebRTCReceiver) HandleWebSocketConnection(w http.ResponseWriter, req *http.Request) {
 	conn, err := r.upgrader.Upgrade(w, req, nil)
 	if err != nil {
 		fmt.Printf("WebSocket upgrade error: %v\n", err)

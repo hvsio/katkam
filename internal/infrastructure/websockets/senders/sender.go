@@ -16,13 +16,13 @@ type WebRTCSender struct {
 	isConnected bool
 
 	// WebSocket
-	upgrader           websocket.Upgrader
-	upgradedConnection *websocket.Conn
+	upgrader            websocket.Upgrader
+	websocketConnection *websocket.Conn
 
 	// WebRRTC
-	peerConnection *ext_webrtc.PeerConnection
-	videoTrack     *ext_webrtc.TrackLocalStaticSample
-	audioTrack     *ext_webrtc.TrackLocalStaticSample
+	webrtcConnection *ext_webrtc.PeerConnection
+	videoTrack       *ext_webrtc.TrackLocalStaticSample
+	audioTrack       *ext_webrtc.TrackLocalStaticSample
 
 	// Channels for receiving video and audio data to send
 	videoChannel chan []byte
@@ -39,6 +39,12 @@ func NewWebRTCSender() *WebRTCSender {
 		videoChannel: make(chan []byte, 100),
 		audioChannel: make(chan []byte, 100),
 	}
+}
+
+func (s *WebRTCSender) SetIsConnected(isConnected bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.isConnected = isConnected
 }
 
 func (r *WebRTCSender) Start() error {
@@ -86,69 +92,49 @@ func (s *WebRTCSender) SendAudioFrame(data []byte) {
 
 // Upgrades the WebSocket connection and initializes the peer connection if not already done.
 // Adds handlers for ICE candidates and signaling messages.
-func (s *WebRTCSender) StartWebSocketConnection(w http.ResponseWriter, req *http.Request) {
-	conn, err := s.upgrader.Upgrade(w, req, nil)
+func (s *WebRTCSender) HandleWebSocketConnection(w http.ResponseWriter, req *http.Request) {
+	if s.webrtcConnection == nil {
+		panic("Failed to start peer connection")
+	}
+
+	upgradedConnection, err := s.upgrader.Upgrade(w, req, nil)
 	if err != nil {
 		fmt.Printf("WebSocket upgrade error: %v\n", err)
 	}
-	defer conn.Close()
-	fmt.Printf("WebSocket connection established from %s\n", req.RemoteAddr)
-
-	if s.peerConnection == nil {
-		if err := s.Start(); err != nil {
-			fmt.Printf("Failed to start peer connection: %v\n", err)
-			return
-		}
-	}
-
-	// Handle ICE candidates
-	s.peerConnection.OnICECandidate(func(candidate *ext_webrtc.ICECandidate) {
-		if candidate == nil {
-			return
-		}
-
-		candidateInit := candidate.ToJSON()
-		if err := conn.WriteJSON(map[string]interface{}{
-			"type":      "ice-candidate",
-			"candidate": candidateInit,
-		}); err != nil {
-			fmt.Printf("Error sending ICE candidate: %v\n", err)
-		}
-	})
+	defer upgradedConnection.Close()
+	s.websocketConnection = upgradedConnection
 
 	// Listen for signaling messages
 	for {
 		var message map[string]interface{}
-		if err := conn.ReadJSON(&message); err != nil {
-			fmt.Printf("WebSocket read error: %v\n", err)
+		if err := s.websocketConnection.ReadJSON(&message); err != nil {
 			break
 		}
 
 		switch message["type"] {
 		case "offer":
-			fmt.Printf("Received offer from client\n")
 			offer := ext_webrtc.SessionDescription{
 				Type: ext_webrtc.SDPTypeOffer,
 				SDP:  message["sdp"].(string),
 			}
 
-			if err := s.peerConnection.SetRemoteDescription(offer); err != nil {
+			if err := s.webrtcConnection.SetRemoteDescription(offer); err != nil {
 				fmt.Printf("Error setting remote description: %v\n", err)
 				continue
 			}
 
-			answer, err := s.peerConnection.CreateAnswer(nil)
+			answer, err := s.webrtcConnection.CreateAnswer(nil)
 			if err != nil {
 				fmt.Printf("Error creating answer: %v\n", err)
 				continue
 			}
 
-			if err := s.peerConnection.SetLocalDescription(answer); err != nil {
+			if err := s.webrtcConnection.SetLocalDescription(answer); err != nil {
 				fmt.Printf("Error setting local description: %v\n", err)
 				continue
 			}
 
-			if err := conn.WriteJSON(map[string]interface{}{
+			if err := s.websocketConnection.WriteJSON(map[string]interface{}{
 				"type": "answer",
 				"sdp":  answer.SDP,
 			}); err != nil {
@@ -166,9 +152,12 @@ func (s *WebRTCSender) StartWebSocketConnection(w http.ResponseWriter, req *http
 				SDPMid:        &sdpMid,
 			}
 
-			if err := s.peerConnection.AddICECandidate(candidate); err != nil {
+			if err := s.webrtcConnection.AddICECandidate(candidate); err != nil {
 				fmt.Printf("Error adding ICE candidate: %v\n", err)
 			}
+		default:
+			fmt.Printf("Unknown message type: %v\n", message["type"])
+			return
 		}
 	}
 }
@@ -180,26 +169,33 @@ func (s *WebRTCSender) IsConnected() bool {
 }
 
 func (s *WebRTCSender) Close() error {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
 
-	if s.peerConnection != nil {
-		return s.peerConnection.Close()
+	if s.webrtcConnection != nil {
+		return s.webrtcConnection.Close()
 	}
+
+	if s.websocketConnection != nil {
+		return s.websocketConnection.Close()
+	}
+
 	return nil
 }
 
 // Initializes WebRTC peer connection. Adds listener for connection state change, ICE connection state change, and ICE gathering state change.
 // Starts streaming video and audio in separate goroutines, if connection is established via PeerConnectionStateConnected.
 func (s *WebRTCSender) initializePeerConnection() error {
-	fmt.Println("Initializing sender...")
 	config := ext_webrtc.Configuration{
 		ICEServers: []ext_webrtc.ICEServer{
 			{
 				URLs: []string{
-					"stun:stun.l.google.com:19302",
-					"stun:stun1.l.google.com:19302",
+					"stun:stun.relay.metered.ca:80",
+					"turn:global.relay.metered.ca:80",
+					"turn:global.relay.metered.ca:80?transport=tcp",
+					"turn:global.relay.metered.ca:443",
+					"turns:global.relay.metered.ca:443?transport=tcp",
 				},
+				Username:   "3684af77c3b49d3aa21b4fc1",
+				Credential: "0ZFmoQdwkmXjk6vh",
 			},
 		},
 		ICECandidatePoolSize: 10,
@@ -209,33 +205,37 @@ func (s *WebRTCSender) initializePeerConnection() error {
 	if err != nil {
 		return fmt.Errorf("failed to create peer connection: %v", err)
 	}
-	s.peerConnection = pc
+	s.webrtcConnection = pc
 
-	s.peerConnection.OnConnectionStateChange(func(state ext_webrtc.PeerConnectionState) {
-		fmt.Printf("Sender connection state: %s\n", state.String())
+	s.webrtcConnection.OnConnectionStateChange(func(state ext_webrtc.PeerConnectionState) {
 		s.mutex.Lock()
 		defer s.mutex.Unlock()
 
 		switch state {
 		case ext_webrtc.PeerConnectionStateConnected:
-			fmt.Println("Sender Connected")
 			s.isConnected = true
 			go s.streamVideo()
 			go s.streamAudio()
 		case ext_webrtc.PeerConnectionStateDisconnected, ext_webrtc.PeerConnectionStateFailed, ext_webrtc.PeerConnectionStateClosed:
-			fmt.Println("Sender Disconnected")
 			s.Close()
 			s.isConnected = false
 			// TODO: propagate the disconnection event to the receiver/camera
 		}
 	})
 
-	s.peerConnection.OnICEConnectionStateChange(func(state ext_webrtc.ICEConnectionState) {
-		fmt.Printf("Sender ICE connection state: %s\n", state.String())
-	})
+	// Handle ICE candidates
+	s.webrtcConnection.OnICECandidate(func(candidate *ext_webrtc.ICECandidate) {
+		if candidate == nil {
+			return
+		}
 
-	s.peerConnection.OnICEGatheringStateChange(func(state ext_webrtc.ICEGathererState) {
-		fmt.Printf("Sender ICE gathering state: %s\n", state.String())
+		candidateInit := candidate.ToJSON()
+		if err := s.websocketConnection.WriteJSON(map[string]interface{}{
+			"type":      "ice-candidate",
+			"candidate": candidateInit,
+		}); err != nil {
+			fmt.Printf("Error sending ICE candidate: %v\n", err)
+		}
 	})
 
 	return nil
@@ -254,7 +254,7 @@ func (s *WebRTCSender) createVideoTrack() error {
 	s.videoTrack = videoTrack
 
 	// Add tracks to peer connection
-	if _, err = s.peerConnection.AddTrack(videoTrack); err != nil {
+	if _, err = s.webrtcConnection.AddTrack(videoTrack); err != nil {
 		return fmt.Errorf("failed to add video track: %v", err)
 	}
 
@@ -273,7 +273,7 @@ func (s *WebRTCSender) createAudioTrack() error {
 	}
 	s.audioTrack = audioTrack
 
-	if _, err = s.peerConnection.AddTrack(audioTrack); err != nil {
+	if _, err = s.webrtcConnection.AddTrack(audioTrack); err != nil {
 		return fmt.Errorf("failed to add audio track: %v", err)
 	}
 

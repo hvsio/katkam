@@ -1,6 +1,7 @@
 package receivers
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"katkam/internal/infrastructure/websockets"
@@ -12,14 +13,15 @@ import (
 )
 
 type WebRTCReceiver struct {
+	// WebSocket
 	websockets.VideoStreamer
+	upgrader websocket.Upgrader
 
-	upgrader       websocket.Upgrader
-	peerConnection *ext_webrtc.PeerConnection
-
-	dataChannel *ext_webrtc.DataChannel
-	videoTrack  *ext_webrtc.TrackRemote
-	audioTrack  *ext_webrtc.TrackRemote
+	// WebRTC
+	videoTrack *ext_webrtc.TrackRemote
+	audioTrack *ext_webrtc.TrackRemote
+	pc         *ext_webrtc.PeerConnection
+	pcMutex    sync.RWMutex
 
 	isStreaming bool
 	mutex       sync.RWMutex
@@ -27,6 +29,10 @@ type WebRTCReceiver struct {
 
 func NewWebRTCReceiver() *WebRTCReceiver {
 	return &WebRTCReceiver{
+		VideoStreamer: websockets.VideoStreamer{
+			ReceiverVideoChannel: make(chan []byte, 100),
+			ReceiverAudioChannel: make(chan []byte, 100),
+		},
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
 				return true // Allow all origins for demo TODO
@@ -35,7 +41,7 @@ func NewWebRTCReceiver() *WebRTCReceiver {
 	}
 }
 
-func (r *WebRTCReceiver) Start() error {
+func (r *WebRTCReceiver) Start(ctx context.Context) error {
 	return nil
 }
 
@@ -60,27 +66,27 @@ func (r *WebRTCReceiver) InitializePeerConnection() error {
 	if err != nil {
 		return fmt.Errorf("failed to create peer connection: %v", err)
 	}
-	r.peerConnection = pc
+	r.pc = pc
 
 	// Handle incoming tracks
 	pc.OnTrack(func(track *ext_webrtc.TrackRemote, receiver *ext_webrtc.RTPReceiver) {
 		if track.Kind() == ext_webrtc.RTPCodecTypeVideo {
-			r.mutex.Lock()
+			r.pcMutex.Lock()
 			r.videoTrack = track
-			r.mutex.Unlock()
+			r.pcMutex.Unlock()
 			go r.handleVideoTrack(track)
 		} else if track.Kind() == ext_webrtc.RTPCodecTypeAudio {
-			r.mutex.Lock()
+			r.pcMutex.Lock()
 			r.audioTrack = track
-			r.mutex.Unlock()
+			r.pcMutex.Unlock()
 			go r.handleAudioTrack(track)
 		}
 	})
 
 	// Handle connection state changes
 	pc.OnConnectionStateChange(func(state ext_webrtc.PeerConnectionState) {
-		r.mutex.Lock()
-		defer r.mutex.Unlock()
+		r.pcMutex.Lock()
+		defer r.pcMutex.Unlock()
 
 		switch state {
 		case ext_webrtc.PeerConnectionStateConnected:
@@ -111,11 +117,6 @@ func (r *WebRTCReceiver) handleVideoTrack(track *ext_webrtc.TrackRemote) {
 			fmt.Printf("Error reading video RTP packet: %v\n", err)
 			continue
 		}
-
-		// Forward video packet data to callback if set TODO
-		// if r.OnVideoFrame != nil {
-		// 	r.OnVideoFrame(packet.Payload)
-		// }
 	}
 }
 
@@ -131,10 +132,6 @@ func (r *WebRTCReceiver) handleAudioTrack(track *ext_webrtc.TrackRemote) {
 			continue
 		}
 
-		// Forward audio packet data to callback if set
-		// if r.OnAudioFrame != nil {
-		// 	r.OnAudioFrame(packet.Payload)
-		// }
 	}
 }
 
@@ -147,7 +144,7 @@ func (r *WebRTCReceiver) HandleWebSocketConnection(w http.ResponseWriter, req *h
 	defer conn.Close()
 
 	// Initialize peer connection if not already done
-	if r.peerConnection == nil {
+	if r.pc == nil {
 		if err := r.InitializePeerConnection(); err != nil {
 			fmt.Printf("Failed to initialize peer connection: %v\n", err)
 			return
@@ -155,7 +152,7 @@ func (r *WebRTCReceiver) HandleWebSocketConnection(w http.ResponseWriter, req *h
 	}
 
 	// Handle ICE candidates
-	r.peerConnection.OnICECandidate(func(candidate *ext_webrtc.ICECandidate) {
+	r.pc.OnICECandidate(func(candidate *ext_webrtc.ICECandidate) {
 		if candidate == nil {
 			return
 		}
@@ -184,18 +181,18 @@ func (r *WebRTCReceiver) HandleWebSocketConnection(w http.ResponseWriter, req *h
 				SDP:  message["sdp"].(string),
 			}
 
-			if err := r.peerConnection.SetRemoteDescription(offer); err != nil {
+			if err := r.pc.SetRemoteDescription(offer); err != nil {
 				fmt.Printf("Error setting remote description: %v\n", err)
 				continue
 			}
 
-			answer, err := r.peerConnection.CreateAnswer(nil)
+			answer, err := r.pc.CreateAnswer(nil)
 			if err != nil {
 				fmt.Printf("Error creating answer: %v\n", err)
 				continue
 			}
 
-			if err := r.peerConnection.SetLocalDescription(answer); err != nil {
+			if err := r.pc.SetLocalDescription(answer); err != nil {
 				fmt.Printf("Error setting local description: %v\n", err)
 				continue
 			}
@@ -218,7 +215,7 @@ func (r *WebRTCReceiver) HandleWebSocketConnection(w http.ResponseWriter, req *h
 				SDPMid:        &sdpMid,
 			}
 
-			if err := r.peerConnection.AddICECandidate(candidate); err != nil {
+			if err := r.pc.AddICECandidate(candidate); err != nil {
 				fmt.Printf("Error adding ICE candidate: %v\n", err)
 			}
 		}
@@ -235,8 +232,8 @@ func (r *WebRTCReceiver) Close() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	if r.peerConnection != nil {
-		return r.peerConnection.Close()
+	if r.pc != nil {
+		return r.pc.Close()
 	}
 	return nil
 }

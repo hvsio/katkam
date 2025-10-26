@@ -24,10 +24,6 @@ type Camera struct {
 func NewCamera() *Camera {
 	return &Camera{
 		Device: "0", // Default camera input for AVFoundation on macOS
-		VideoStreamer: websockets.VideoStreamer{
-			ReceiverVideoChannel: make(chan []byte),
-			ReceiverAudioChannel: make(chan []byte),
-		},
 	}
 }
 
@@ -39,26 +35,28 @@ func (c *Camera) GetReceiverVideoChannel() chan []byte {
 	return c.ReceiverVideoChannel
 }
 
-func (c *Camera) Start() error {
+func (c *Camera) Start(ctx context.Context) error {
+	c.VideoStreamer = websockets.VideoStreamer{
+		ReceiverVideoChannel: make(chan []byte, 100),
+		ReceiverAudioChannel: make(chan []byte, 100),
+	}
+
 	go func() {
 		// Start a 60-second video capture that streams frames
-		if err := c.StartVideoCapture(60 * 60 * time.Second); err != nil { // 1 hour duration
+		if err := c.StartVideoCapture(ctx, 60*60*time.Second); err != nil { // 1 hour duration
 			fmt.Printf("❌ Failed to start camera capture: %v\n", err)
 		}
 	}()
 	return nil
 }
 
-func (c *Camera) StartVideoCapture(duration time.Duration) error {
+func (c *Camera) StartVideoCapture(ctx context.Context, duration time.Duration) error {
 	c.StreamMutex.Lock()
 	defer c.StreamMutex.Unlock()
 
 	if c.isStreaming {
 		return fmt.Errorf("camera is already streaming")
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// Use ffmpeg to capture video and output IVF format for VP8 frames
 	cmd := exec.CommandContext(ctx, "ffmpeg",
@@ -97,6 +95,7 @@ func (c *Camera) StartVideoCapture(duration time.Duration) error {
 
 func (c *Camera) captureFramesToCallback(reader io.Reader, ctx context.Context) {
 	// Skip IVF header (32 bytes)
+	streamingContext, streamingCancel := context.WithCancel(ctx)
 	header := make([]byte, 32)
 	_, err := io.ReadFull(reader, header)
 	if err != nil {
@@ -106,7 +105,11 @@ func (c *Camera) captureFramesToCallback(reader io.Reader, ctx context.Context) 
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-streamingContext.Done():
+			fmt.Println("Camera stream ended")
+			streamingCancel()
+			close(c.ReceiverVideoChannel)
+			close(c.ReceiverAudioChannel)
 			return
 		default:
 			// Read IVF frame header (12 bytes)
@@ -152,6 +155,8 @@ func (c *Camera) Close() error {
 	}
 
 	c.isStreaming = false
+	close(c.ReceiverAudioChannel)
+	close(c.ReceiverVideoChannel)
 	return nil
 }
 

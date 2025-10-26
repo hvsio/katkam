@@ -1,7 +1,9 @@
 package senders
 
 import (
+	"context"
 	"fmt"
+	"katkam/internal/infrastructure/websockets"
 	"net/http"
 	"sync"
 	"time"
@@ -12,21 +14,18 @@ import (
 )
 
 type WebRTCSender struct {
-	mutex       sync.RWMutex
+	websockets.VideoStreamer
 	isConnected bool
 
 	// WebSocket
 	upgrader            websocket.Upgrader
 	websocketConnection *websocket.Conn
 
-	// WebRRTC
+	// WebRTC
+	mutex            sync.RWMutex
 	webrtcConnection *ext_webrtc.PeerConnection
 	videoTrack       *ext_webrtc.TrackLocalStaticSample
 	audioTrack       *ext_webrtc.TrackLocalStaticSample
-
-	// Channels for receiving video and audio data to send
-	videoChannel chan []byte
-	audioChannel chan []byte
 }
 
 func NewWebRTCSender() *WebRTCSender {
@@ -36,32 +35,37 @@ func NewWebRTCSender() *WebRTCSender {
 				return true // Allow all origins for demo
 			},
 		},
-		videoChannel: make(chan []byte, 100),
-		audioChannel: make(chan []byte, 100),
+		VideoStreamer: websockets.VideoStreamer{
+			ReceiverVideoChannel: make(chan []byte, 100),
+			ReceiverAudioChannel: make(chan []byte, 100),
+		},
+		isConnected: false,
 	}
 }
 
-func (s *WebRTCSender) SetIsConnected(isConnected bool) {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
+func (s *WebRTCSender) setIsConnected(isConnected bool) {
 	s.isConnected = isConnected
 }
 
-func (r *WebRTCSender) Start() error {
-	err := r.initializePeerConnection()
+func (s *WebRTCSender) Start(streamingContext context.Context) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	err := s.initializePeerConnection(streamingContext)
 	if err != nil {
 		return err
 	}
 
-	err = r.createVideoTrack()
+	err = s.createVideoTrack()
 	if err != nil {
 		return err
 	}
 
-	err = r.createAudioTrack()
+	err = s.createAudioTrack()
 	if err != nil {
 		return err
 	}
+	fmt.Println("WebRTC sender started")
 
 	return nil
 }
@@ -69,8 +73,15 @@ func (r *WebRTCSender) Start() error {
 // Sends data from the receiver to the sender's internal video channel. Once the peer connection is established,
 // the video data will be sent to the peer connection's video track.
 func (s *WebRTCSender) SendVideoFrame(data []byte) {
+	s.mutex.RLock()
+	if !s.isConnected {
+		s.mutex.RUnlock()
+		return // Don't send if not connected
+	}
+	s.mutex.RUnlock()
+
 	select {
-	case s.videoChannel <- data:
+	case s.ReceiverVideoChannel <- data:
 		// Successfully sent to channel
 	default:
 		// Channel is full, drop frame
@@ -81,8 +92,15 @@ func (s *WebRTCSender) SendVideoFrame(data []byte) {
 // Sends data from the receiver to the sender's internal audio channel. Once the peer connection is established,
 // the audio data will be sent to the peer connection's audio track.
 func (s *WebRTCSender) SendAudioFrame(data []byte) {
+	s.mutex.RLock()
+	if !s.isConnected {
+		s.mutex.RUnlock()
+		return // Don't send if not connected
+	}
+	s.mutex.RUnlock()
+
 	select {
-	case s.audioChannel <- data:
+	case s.ReceiverAudioChannel <- data:
 		// Successfully sent
 	default:
 		// Channel is full, drop frame
@@ -93,13 +111,10 @@ func (s *WebRTCSender) SendAudioFrame(data []byte) {
 // Upgrades the WebSocket connection and initializes the peer connection if not already done.
 // Adds handlers for ICE candidates and signaling messages.
 func (s *WebRTCSender) HandleWebSocketConnection(w http.ResponseWriter, req *http.Request) {
-	if s.webrtcConnection == nil {
-		panic("Failed to start peer connection")
-	}
-
 	upgradedConnection, err := s.upgrader.Upgrade(w, req, nil)
 	if err != nil {
 		fmt.Printf("WebSocket upgrade error: %v\n", err)
+		return
 	}
 	defer upgradedConnection.Close()
 	s.websocketConnection = upgradedConnection
@@ -169,9 +184,13 @@ func (s *WebRTCSender) IsConnected() bool {
 }
 
 func (s *WebRTCSender) Close() error {
+	fmt.Println("Closing WebRTC sender")
+	s.setIsConnected(false)
 
 	if s.webrtcConnection != nil {
-		return s.webrtcConnection.Close()
+		if err := s.webrtcConnection.Close(); err != nil {
+			return err
+		}
 	}
 
 	if s.websocketConnection != nil {
@@ -183,7 +202,7 @@ func (s *WebRTCSender) Close() error {
 
 // Initializes WebRTC peer connection. Adds listener for connection state change, ICE connection state change, and ICE gathering state change.
 // Starts streaming video and audio in separate goroutines, if connection is established via PeerConnectionStateConnected.
-func (s *WebRTCSender) initializePeerConnection() error {
+func (s *WebRTCSender) initializePeerConnection(ctx context.Context) error {
 	config := ext_webrtc.Configuration{
 		ICEServers: []ext_webrtc.ICEServer{
 			{
@@ -205,26 +224,30 @@ func (s *WebRTCSender) initializePeerConnection() error {
 	if err != nil {
 		return fmt.Errorf("failed to create peer connection: %v", err)
 	}
-	s.webrtcConnection = pc
 
+	s.webrtcConnection = pc
+	streamingContext, streamingCancel := context.WithCancel(ctx)
 	s.webrtcConnection.OnConnectionStateChange(func(state ext_webrtc.PeerConnectionState) {
 		s.mutex.Lock()
 		defer s.mutex.Unlock()
 
 		switch state {
 		case ext_webrtc.PeerConnectionStateConnected:
-			s.isConnected = true
-			go s.streamVideo()
-			go s.streamAudio()
+			fmt.Println("WebRTC sender connected")
+			s.setIsConnected(true)
+			go s.streamVideo(streamingContext)
+			go s.streamAudio(streamingContext)
 		case ext_webrtc.PeerConnectionStateDisconnected, ext_webrtc.PeerConnectionStateFailed, ext_webrtc.PeerConnectionStateClosed:
-			s.Close()
-			s.isConnected = false
-			// TODO: propagate the disconnection event to the receiver/camera
+			fmt.Println("WebRTC sender disconnected")
+			streamingCancel()
 		}
 	})
 
 	// Handle ICE candidates
 	s.webrtcConnection.OnICECandidate(func(candidate *ext_webrtc.ICECandidate) {
+		s.mutex.Lock()
+		defer s.mutex.Unlock()
+
 		if candidate == nil {
 			return
 		}
@@ -281,13 +304,17 @@ func (s *WebRTCSender) createAudioTrack() error {
 }
 
 // Streams video data frames from the video channel to the peer connection's video track.
-func (s *WebRTCSender) streamVideo() {
+func (s *WebRTCSender) streamVideo(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
+		if !s.isConnected {
+			return
+		}
+
 		select {
-		case videoData := <-s.videoChannel:
+		case videoData := <-s.ReceiverVideoChannel:
 			if s.isConnected && s.videoTrack != nil {
 				if err := s.videoTrack.WriteSample(media.Sample{
 					Data:     videoData,
@@ -298,6 +325,9 @@ func (s *WebRTCSender) streamVideo() {
 			} else {
 				fmt.Printf("⚠️ Cannot send video: connected=%v, track=%v\n", s.isConnected, s.videoTrack != nil)
 			}
+		case <-ctx.Done():
+			fmt.Println("Video stream context done")
+			return
 		case <-ticker.C:
 			// If no video data is available, continue to maintain frame rate
 		}
@@ -305,13 +335,13 @@ func (s *WebRTCSender) streamVideo() {
 }
 
 // Streams audio data frames from the audio channel to the peer connection's audio track.
-func (s *WebRTCSender) streamAudio() {
+func (s *WebRTCSender) streamAudio(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		select {
-		case audioData := <-s.audioChannel:
+		case audioData := <-s.ReceiverAudioChannel:
 			if s.isConnected && s.audioTrack != nil {
 				if err := s.audioTrack.WriteSample(media.Sample{
 					Data:     audioData,
@@ -320,6 +350,9 @@ func (s *WebRTCSender) streamAudio() {
 					fmt.Printf("Error writing audio sample: %v\n", err)
 				}
 			}
+		case <-ctx.Done():
+			fmt.Println("Audio stream context done")
+			return
 		case <-ticker.C:
 			// If no audio data is available, continue
 		}

@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"fmt"
 	"katkam/internal/config"
 	repo "katkam/internal/infrastructure/repository"
 	"strings"
@@ -60,8 +59,7 @@ func (a *Authorizer) authenticate(username, password string) (bool, error) {
 		return false, ErrorUserNotFound
 	}
 
-	b, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	fmt.Println(string(b))
+	_, err = bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return false, ErrorInvalidCredentials
 	}

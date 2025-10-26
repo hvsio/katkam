@@ -1,6 +1,9 @@
 package websockets
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
 
 type VideoStreamer struct {
 	ReceiverVideoChannel chan []byte
@@ -8,7 +11,7 @@ type VideoStreamer struct {
 }
 
 type WebSocket interface {
-	Start() error
+	Start(ctx context.Context) error
 	Close() error
 	IsConnected() bool
 	HandleWebSocketConnection(w http.ResponseWriter, req *http.Request)
